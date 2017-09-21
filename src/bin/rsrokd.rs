@@ -23,48 +23,61 @@ fn main() {
     println!("host: {}", matches.value_of("host").unwrap());
     let host = matches.value_of("host").unwrap();
 
-    let mut router = Router::new();
-    router.any("/", dummy, "dummy");
-
-    let mut chain = Chain::new(router);
-    let rsrokd_middleware = RsrokdMiddleware {
+    let mut api_handler = Router::new();
+    api_handler.any("/", dummy, "dummy");
+    let tunnel_handler = TunnelHandler {};
+    let handler = RsrokdHandler {
         host: host.to_string(),
+        api_handler: Box::new(api_handler),
+        tunnel_handler: Box::new(tunnel_handler),
     };
-    chain.link_around(rsrokd_middleware);
-    Iron::new(chain).http(host).unwrap();
+    Iron::new(handler).http(host).unwrap();
 }
 
 fn dummy(req: &mut Request) -> IronResult<Response> {
     Ok(Response::with((status::NotFound)))
 }
-
-struct RsrokdMiddleware {
+struct RsrokdHandler {
     host: String,
+    api_handler: Box<Handler>,
+    tunnel_handler: Box<Handler>,
 }
-
-impl AroundMiddleware for RsrokdMiddleware {
-    fn around(self, handler: Box<Handler>) -> Box<Handler> {
-        let new_handler = move |req: &mut Request| -> IronResult<Response> {
-            match req.headers.clone().get::<Host>() {
-                Some(host) if self.is_root_host(host.hostname.to_owned(), host.port) => {
-                    handler.handle(req)
-                }
-                Some(host) => Ok(Response::with(
-                    (status::Ok, ContentType::json().0, host.clone().hostname),
-                )),
-                _ => Err(IronError::new(
-                    StringError("invalid request".to_string()),
-                    status::BadRequest,
-                )),
+impl Handler for RsrokdHandler {
+    fn handle(&self, req: &mut Request) -> IronResult<Response> {
+        match req.headers.clone().get::<Host>() {
+            Some(host) if self.is_root_host(host.hostname.to_owned(), host.port) => {
+                self.api_handler.handle(req)
             }
-        };
-        Box::new(new_handler)
+            Some(host) => self.tunnel_handler.handle(req),
+            _ => Err(IronError::new(
+                StringError("invalid request".to_string()),
+                status::BadRequest,
+            )),
+        }
     }
 }
 
-impl RsrokdMiddleware {
+impl RsrokdHandler {
     fn is_root_host(&self, target_host: String, target_port: Option<u16>) -> bool {
-        let port = target_port.map_or("".to_owned(), |port| ":".to_string() + &port.to_string());
-        self.host == (target_host + &port)
+        self.host == to_host_str(target_host, target_port)
     }
+}
+
+struct TunnelHandler {}
+
+impl Handler for TunnelHandler {
+    fn handle(&self, req: &mut Request) -> IronResult<Response> {
+        let headers = req.headers.clone();
+        let host = headers.get::<Host>().unwrap();
+        Ok(Response::with((
+            status::Ok,
+            ContentType::json().0,
+            to_host_str(host.hostname.to_owned(), host.port),
+        )))
+    }
+}
+
+fn to_host_str(hostname: String, port: Option<u16>) -> String {
+    let port = port.map_or("".to_owned(), |port| ":".to_string() + &port.to_string());
+    hostname + &port
 }
