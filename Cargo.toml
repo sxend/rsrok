@@ -1,0 +1,6 @@
+[package]
+name = "rsrok"
+version = "0.1.0"
+authors = ["sxend <arimitsu.k+github@gmail.com>"]
+
+[dependencies]
