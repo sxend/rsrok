@@ -1,5 +1,12 @@
 extern crate clap;
+extern crate iron;
+extern crate router;
+
 use clap::{Arg, App, SubCommand};
+use iron::*;
+use iron::typemap;
+use iron::headers::*;
+use router::Router;
 
 fn main() {
     let matches = App::new("rsrok")
