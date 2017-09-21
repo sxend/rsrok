@@ -3,11 +3,14 @@ extern crate iron;
 extern crate router;
 mod string_error;
 
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use clap::{App, Arg};
 use iron::*;
 use iron::headers::*;
 use router::Router;
 use string_error::StringError;
+
 
 fn main() {
     let matches = App::new("rsrokd")
@@ -22,7 +25,10 @@ fn main() {
         .get_matches();
     println!("host: {}", matches.value_of("host").unwrap());
     let host = matches.value_of("host").unwrap();
-
+    let rsrokd = Rsrokd {
+        host: host.to_string(),
+        tunnels: Arc::new(Mutex::new(HashMap::new())),
+    };
     let mut api_handler = Router::new();
     api_handler.any("/", dummy, "dummy");
     let tunnel_handler = TunnelHandler {};
@@ -32,6 +38,13 @@ fn main() {
         tunnel_handler: Box::new(tunnel_handler),
     };
     Iron::new(handler).http(host).unwrap();
+}
+
+struct Tunnel;
+
+struct Rsrokd {
+    pub host: String,
+    pub tunnels: Arc<Mutex<HashMap<String, Tunnel>>>
 }
 
 fn dummy(req: &mut Request) -> IronResult<Response> {
@@ -48,7 +61,7 @@ impl Handler for RsrokdHandler {
             Some(host) if self.is_root_host(host.hostname.to_owned(), host.port) => {
                 self.api_handler.handle(req)
             }
-            Some(host) => self.tunnel_handler.handle(req),
+            Some(_) => self.tunnel_handler.handle(req),
             _ => Err(IronError::new(
                 StringError("invalid request".to_string()),
                 status::BadRequest,
