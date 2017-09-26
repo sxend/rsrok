@@ -36,13 +36,13 @@ fn main() {
 
 #[derive(Debug)]
 struct Tunnel {
-    pub id: String
+    pub id: String,
 }
 
 #[derive(Debug)]
 struct Rsrokd {
     pub host: String,
-    pub tunnels: Arc<Mutex<HashMap<String, Tunnel>>>
+    pub tunnels: Arc<Mutex<HashMap<String, Tunnel>>>,
 }
 
 struct RsrokdHandler {
@@ -50,6 +50,7 @@ struct RsrokdHandler {
     api_handler: Box<Handler>,
     tunnel_handler: Box<Handler>,
 }
+
 impl Handler for RsrokdHandler {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
         match req.headers.clone().get::<Host>() {
@@ -83,17 +84,21 @@ impl RsrokdHandler {
 
 struct ApiHandler {
     rsrokd: Arc<Rsrokd>,
-    router: Router
+    router: Router,
 }
 
 impl ApiHandler {
     fn new(rsrokd: Arc<Rsrokd>) -> ApiHandler {
         let mut router = Router::new();
         router.any("/", ApiHandler::dummy, "dummy");
-        router.get("/api/v1/join", ApiHandler::join_route(rsrokd.clone()), "join");
+        router.get(
+            "/api/v1/join",
+            ApiHandler::join_route(rsrokd.clone()),
+            "join",
+        );
         ApiHandler {
             rsrokd: rsrokd,
-            router: router
+            router: router,
         }
     }
     fn dummy(req: &mut Request) -> IronResult<Response> {
@@ -105,37 +110,43 @@ impl ApiHandler {
             let mut tunnels = rsrokd.tunnels.lock().unwrap();
             let id = Uuid::new_v4().hyphenated().to_string();
             let tunnel = tunnels.entry(id.to_owned()).or_insert(Tunnel {
-                id: id.to_owned() // register ws channels
+                id: id.to_owned(), // register ws channels
             });
-            Ok(Response::with((status::Created,
-                               ContentType::json().0,
-                               format!("{:?}", tunnel))))
+            Ok(Response::with((
+                status::Created,
+                ContentType::json().0,
+                format!("{:?}", tunnel),
+            )))
         };
         Box::new(foo)
     }
 }
 impl Handler for ApiHandler {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
-        println!("execute api. current tunnels len: {}", self.rsrokd.tunnels.lock().unwrap().len());
+        println!(
+            "execute api. current tunnels len: {}",
+            self.rsrokd.tunnels.lock().unwrap().len()
+        );
         self.router.handle(req)
     }
 }
 
 struct TunnelHandler {
-    rsrokd: Arc<Rsrokd>
+    rsrokd: Arc<Rsrokd>,
 }
 
 impl TunnelHandler {
     fn new(rsrokd: Arc<Rsrokd>) -> TunnelHandler {
-        TunnelHandler {
-            rsrokd: rsrokd
-        }
+        TunnelHandler { rsrokd: rsrokd }
     }
 }
 
 impl Handler for TunnelHandler {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
-        println!("execute tunnel. current tunnels len: {}", self.rsrokd.tunnels.lock().unwrap().len());
+        println!(
+            "execute tunnel. current tunnels len: {}",
+            self.rsrokd.tunnels.lock().unwrap().len()
+        );
         let headers = req.headers.clone();
         let host = headers.get::<Host>().unwrap();
         Ok(Response::with((
